@@ -34,6 +34,7 @@ pub fn list_templates(state: State<'_, AppState>) -> CommandResult<Vec<TemplateS
                     name: row.get(1)?,
                     description: row.get(2)?,
                     field_count: fields.len(),
+                    field_labels: fields.iter().map(|field| field.label.clone()).collect(),
                     updated_at: row.get(4)?,
                     is_default: row.get(5)?,
                 })

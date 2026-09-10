@@ -42,6 +42,7 @@ export function SettingsPage() {
   const [confirmation, setConfirmation] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
+  const [passwordFormOpen, setPasswordFormOpen] = useState(false)
 
   async function changePassword(event: React.FormEvent) {
     event.preventDefault()
@@ -61,6 +62,7 @@ export function SettingsPage() {
       setCurrentPassword('')
       setNewPassword('')
       setConfirmation('')
+      setPasswordFormOpen(false)
       showToast('Heslo KARTA bylo změněno.')
     } catch (reason) {
       setPasswordError(errorMessage(reason))
@@ -82,8 +84,8 @@ export function SettingsPage() {
       </section>
 
       <section className="settings-group" aria-labelledby="password-title">
-        <h2 id="password-title">Přihlašovací heslo</h2>
-        <form className="form-stack settings-form" onSubmit={changePassword}>
+        <div className="settings-section-heading"><h2 id="password-title">Přihlašovací heslo</h2><button className="button button--quiet" type="button" aria-expanded={passwordFormOpen} onClick={() => { setPasswordError(''); setPasswordFormOpen((value) => !value) }}>{passwordFormOpen ? 'Zavřít' : 'Změnit'}</button></div>
+        {passwordFormOpen ? <form className="form-stack settings-form" onSubmit={changePassword}>
           <label className="field-label">
             Současné heslo
             <input className="text-input" type="password" autoComplete="current-password" value={currentPassword} minLength={6} maxLength={64} required onChange={(event) => setCurrentPassword(event.target.value)} />
@@ -99,7 +101,7 @@ export function SettingsPage() {
           </label>
           {passwordError ? <p className="form-error" role="alert">{passwordError}</p> : null}
           <div><button className="button button--primary" type="submit" disabled={changingPassword}>{changingPassword ? 'Měním heslo…' : 'Změnit heslo'}</button></div>
-        </form>
+        </form> : null}
       </section>
 
       <fieldset className="settings-group">

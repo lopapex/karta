@@ -45,6 +45,7 @@ export interface TemplateSummary {
   name: string
   description: string
   fieldCount: number
+  fieldLabels: string[]
   updatedAt: string
   isDefault: boolean
 }

@@ -31,7 +31,7 @@ export function ClientsPage() {
       </header>
       <div className="list-toolbar">
         <label className="search-field"><MagnifyingGlass size={17} aria-hidden="true" /><span className="visually-hidden">Hledat klienta</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Hledat klienta…" /></label>
-        <button className={`archive-toggle${archived ? ' archive-toggle--active' : ''}`} type="button" aria-pressed={archived} onClick={() => setArchived((value) => !value)}>{archived ? 'Aktivní' : 'Archivovaní'}</button>
+        <div className="archive-filter" role="group" aria-label="Stav klientů"><button className={!archived ? 'archive-filter__option archive-filter__option--active' : 'archive-filter__option'} type="button" aria-pressed={!archived} onClick={() => setArchived(false)}>Aktivní</button><button className={archived ? 'archive-filter__option archive-filter__option--active' : 'archive-filter__option'} type="button" aria-pressed={archived} onClick={() => setArchived(true)}>Archivovaní</button></div>
       </div>
       {error ? <div className="inline-notice inline-notice--error" role="alert">{error}</div> : null}
       {loading ? <p className="loading-state" role="status">Načítám karty…</p> : null}

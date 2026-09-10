@@ -21,7 +21,8 @@ pub fn list_clients(
     if query.chars().count() > 160 {
         return Err(CommandError::validation());
     }
-    let pattern = format!("%{query}%");
+    let escaped_query = escape_like_query(query);
+    let pattern = format!("%{escaped_query}%");
     state.with_connection(|connection| {
         let mut statement = connection
             .prepare(
@@ -44,6 +45,13 @@ pub fn list_clients(
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|_| CommandError::storage())
     })
+}
+
+fn escape_like_query(query: &str) -> String {
+    query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 #[tauri::command]
@@ -270,6 +278,14 @@ mod tests {
         assert_eq!(
             snapshot[0].value,
             Some(json!(snapshot[0].options[0].id.clone()))
+        );
+    }
+
+    #[test]
+    fn search_treats_like_wildcards_as_literal_text() {
+        assert_eq!(
+            escape_like_query(r"50%_sleva\\test"),
+            r"50\%\_sleva\\\\test"
         );
     }
 }

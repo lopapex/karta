@@ -9,7 +9,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use argon2::{Algorithm, Argon2, Params, Version};
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use zeroize::Zeroizing;
 
 use crate::{
@@ -28,9 +28,13 @@ static FAILED_UNLOCKS: AtomicU32 = AtomicU32::new(0);
 
 #[tauri::command]
 pub fn get_security_status(state: State<'_, AppState>) -> CommandResult<SecurityStatus> {
-    Ok(SecurityStatus {
-        state: security_state(&state),
-    })
+    Ok(current_status(&state))
+}
+
+fn current_status(state: &AppState) -> SecurityStatus {
+    SecurityStatus {
+        state: security_state(state),
+    }
 }
 
 fn security_state(state: &AppState) -> SecurityState {
@@ -49,56 +53,64 @@ fn security_state(state: &AppState) -> SecurityState {
 }
 
 #[tauri::command]
-pub fn initialize_secure_storage(
+pub async fn initialize_secure_storage(
     input: AppPasswordInput,
-    state: State<'_, AppState>,
+    app: AppHandle,
 ) -> CommandResult<SecurityStatus> {
-    validate_app_password(&input.password)?;
-    match security_state(&state) {
-        SecurityState::NeedsInitialization => {
-            let mut database_key = Zeroizing::new(vec![0_u8; 32]);
-            getrandom::fill(database_key.as_mut()).map_err(|_| CommandError::storage())?;
-            let protected_key = wrap_database_key(&input.password, &database_key)?;
-            with_crypto_stack(|| {
-                initialize_files(&state.paths, &database_key, &protected_key)?;
-                state.unlock(database_key.to_vec())
-            })?;
-        }
-        SecurityState::NeedsPasswordMigration => {
-            let legacy = fs::read(&state.paths.key).map_err(|_| CommandError::storage())?;
-            let database_key = Zeroizing::new(SystemKeyStore.unprotect_legacy_key(&legacy)?);
-            if database_key.len() != 32 {
-                return Err(CommandError::storage());
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        validate_app_password(&input.password)?;
+        match security_state(&state) {
+            SecurityState::NeedsInitialization => {
+                let mut database_key = Zeroizing::new(vec![0_u8; 32]);
+                getrandom::fill(database_key.as_mut()).map_err(|_| CommandError::storage())?;
+                let protected_key = wrap_database_key(&input.password, &database_key)?;
+                with_crypto_stack(|| {
+                    initialize_files(&state.paths, &database_key, &protected_key)?;
+                    state.unlock(database_key.to_vec())
+                })?;
             }
-            with_crypto_stack(|| state.unlock(database_key.to_vec()))?;
-            let protected_key = wrap_database_key(&input.password, &database_key)?;
-            replace_key_atomically(&state, &protected_key)?;
+            SecurityState::NeedsPasswordMigration => {
+                let legacy = fs::read(&state.paths.key).map_err(|_| CommandError::storage())?;
+                let database_key = Zeroizing::new(SystemKeyStore.unprotect_legacy_key(&legacy)?);
+                if database_key.len() != 32 {
+                    return Err(CommandError::storage());
+                }
+                with_crypto_stack(|| state.unlock(database_key.to_vec()))?;
+                let protected_key = wrap_database_key(&input.password, &database_key)?;
+                replace_key_atomically(&state, &protected_key)?;
+            }
+            _ => {
+                return Err(CommandError::new(
+                    "storage_exists",
+                    "Zabezpečené úložiště už existuje.",
+                ))
+            }
         }
-        _ => {
-            return Err(CommandError::new(
-                "storage_exists",
-                "Zabezpečené úložiště už existuje.",
-            ))
-        }
-    }
-    FAILED_UNLOCKS.store(0, Ordering::Relaxed);
-    get_security_status(state)
+        FAILED_UNLOCKS.store(0, Ordering::Relaxed);
+        Ok(current_status(&state))
+    })
+    .await
+    .map_err(|_| CommandError::storage())?
 }
 
 #[tauri::command]
 pub async fn unlock_database(
     input: AppPasswordInput,
-    state: State<'_, AppState>,
+    app: AppHandle,
 ) -> CommandResult<SecurityStatus> {
-    validate_app_password(&input.password)?;
-    if state.is_unlocked() {
-        return get_security_status(state);
-    }
-    if !matches!(security_state(&state), SecurityState::Locked) {
-        return Err(CommandError::new(
-            "storage_inconsistent",
-            "Databáze nebo její klíč chybí. KARTA zůstala zamčená.",
-        ));
+    {
+        let state = app.state::<AppState>();
+        validate_app_password(&input.password)?;
+        if state.is_unlocked() {
+            return Ok(current_status(&state));
+        }
+        if !matches!(security_state(&state), SecurityState::Locked) {
+            return Err(CommandError::new(
+                "storage_inconsistent",
+                "Databáze nebo její klíč chybí. KARTA zůstala zamčená.",
+            ));
+        }
     }
     let failures = FAILED_UNLOCKS.load(Ordering::Relaxed).min(5);
     if failures > 0 {
@@ -107,39 +119,49 @@ pub async fn unlock_database(
             .await
             .map_err(|_| CommandError::storage())?;
     }
-    let wrapped = fs::read(&state.paths.key).map_err(|_| CommandError::storage())?;
-    let database_key = match unwrap_database_key(&input.password, &wrapped) {
-        Ok(key) => key,
-        Err(error) => {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let wrapped = fs::read(&state.paths.key).map_err(|_| CommandError::storage())?;
+        let database_key = match unwrap_database_key(&input.password, &wrapped) {
+            Ok(key) => key,
+            Err(error) => {
+                FAILED_UNLOCKS.fetch_add(1, Ordering::Relaxed);
+                return Err(error);
+            }
+        };
+        if let Err(error) = with_crypto_stack(|| state.unlock(database_key.to_vec())) {
             FAILED_UNLOCKS.fetch_add(1, Ordering::Relaxed);
             return Err(error);
         }
-    };
-    if let Err(error) = with_crypto_stack(|| state.unlock(database_key.to_vec())) {
-        FAILED_UNLOCKS.fetch_add(1, Ordering::Relaxed);
-        return Err(error);
-    }
-    FAILED_UNLOCKS.store(0, Ordering::Relaxed);
-    get_security_status(state)
+        FAILED_UNLOCKS.store(0, Ordering::Relaxed);
+        Ok(current_status(&state))
+    })
+    .await
+    .map_err(|_| CommandError::storage())?
 }
 
 #[tauri::command]
-pub fn change_password(
+pub async fn change_password(
     input: ChangePasswordInput,
-    state: State<'_, AppState>,
+    app: AppHandle,
 ) -> CommandResult<SecurityStatus> {
-    validate_app_password(&input.current_password)?;
-    validate_app_password(&input.new_password)?;
-    if !state.is_unlocked() {
-        return Err(CommandError::locked());
-    }
-    let wrapped = fs::read(&state.paths.key).map_err(|_| CommandError::storage())?;
-    let database_key = unwrap_database_key(&input.current_password, &wrapped)?;
-    let replacement = wrap_database_key(&input.new_password, &database_key)?;
-    replace_key_atomically(&state, &replacement)?;
-    Ok(SecurityStatus {
-        state: SecurityState::Unlocked,
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        validate_app_password(&input.current_password)?;
+        validate_app_password(&input.new_password)?;
+        if !state.is_unlocked() {
+            return Err(CommandError::locked());
+        }
+        let wrapped = fs::read(&state.paths.key).map_err(|_| CommandError::storage())?;
+        let database_key = unwrap_database_key(&input.current_password, &wrapped)?;
+        let replacement = wrap_database_key(&input.new_password, &database_key)?;
+        replace_key_atomically(&state, &replacement)?;
+        Ok(SecurityStatus {
+            state: SecurityState::Unlocked,
+        })
     })
+    .await
+    .map_err(|_| CommandError::storage())?
 }
 
 pub(crate) fn is_password_key(bytes: &[u8]) -> bool {

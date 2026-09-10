@@ -7,13 +7,14 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { useToast } from '../app/toast'
 import { VisitDialog } from '../components/VisitDialog'
 import { api, errorMessage } from '../domain/api'
+import { formatLocalDate } from '../domain/dates'
 import type { CardField, ClientRecord, VisitSummary } from '../domain/types'
 
 function displayValue(field: CardField) {
   if (field.value === undefined || field.value === null || field.value === '') return 'Nevyplněno'
   if (field.fieldType === 'checkbox') return field.value ? 'Ano' : 'Ne'
   if (field.fieldType === 'select') return field.options.find((option) => option.id === field.value)?.label ?? 'Neznámá možnost'
-  if (field.fieldType === 'date') return new Date(String(field.value)).toLocaleDateString('cs-CZ')
+  if (field.fieldType === 'date') return formatLocalDate(String(field.value))
   return String(field.value)
 }
 
@@ -84,7 +85,7 @@ export function ClientDetailPage() {
       </dl>
       <section className="visits-section" aria-labelledby="visits-title">
         <div className="section-heading"><h2 id="visits-title">Návštěvy</h2><button className="button button--primary" type="button" onClick={() => { setSelectedVisitId(null); setVisitOpen(true) }}><CalendarPlus size={17} />Přidat záznam</button></div>
-        {visits.length === 0 ? <div className="empty-inline">Zatím tu není žádný záznam návštěvy.</div> : <div className="visit-list">{visits.map((visit) => <button className="visit-row" type="button" key={visit.id} onClick={() => { setSelectedVisitId(visit.id); setVisitOpen(true) }}><time dateTime={visit.visitDate}>{new Date(`${visit.visitDate}T12:00:00`).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long', year: 'numeric' })}</time><span className="visit-preview">{visit.notesPreview}</span><span className="visit-updated">Upraveno {new Date(visit.updatedAt).toLocaleDateString('cs-CZ')}</span></button>)}</div>}
+        {visits.length === 0 ? <div className="empty-inline">Zatím tu není žádný záznam návštěvy.</div> : <div className="visit-list">{visits.map((visit) => <button className="visit-row" type="button" key={visit.id} onClick={() => { setSelectedVisitId(visit.id); setVisitOpen(true) }}><time dateTime={visit.visitDate}>{formatLocalDate(visit.visitDate, { day: 'numeric', month: 'long', year: 'numeric' })}</time><span className="visit-preview">{visit.notesPreview}</span><span className="visit-updated">Upraveno {new Date(visit.updatedAt).toLocaleDateString('cs-CZ')}</span></button>)}</div>}
       </section>
       <AlertDialog.Root open={archiveOpen} onOpenChange={setArchiveOpen}><AlertDialog.Portal><AlertDialog.Overlay className="dialog-overlay" /><AlertDialog.Content className="dialog-content"><div className="dialog-heading"><div><AlertDialog.Title>{client.archivedAt ? 'Obnovit klienta?' : 'Archivovat klienta?'}</AlertDialog.Title><AlertDialog.Description>{client.archivedAt ? 'Klient se vrátí mezi aktivní záznamy.' : 'Klienta můžete později z archivu obnovit.'}</AlertDialog.Description></div><AlertDialog.Cancel className="icon-button" aria-label="Zavřít dialog"><X size={18} /></AlertDialog.Cancel></div><div className="dialog-actions"><AlertDialog.Cancel className="button button--quiet">Zrušit</AlertDialog.Cancel><AlertDialog.Action className="button button--primary" onClick={() => void toggleArchive()}>{client.archivedAt ? 'Obnovit' : 'Archivovat'}</AlertDialog.Action></div></AlertDialog.Content></AlertDialog.Portal></AlertDialog.Root>
       <Dialog.Root open={deleteOpen} onOpenChange={setDeleteOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="dialog-content"><div className="dialog-heading"><div><Dialog.Title>Smazat klienta?</Dialog.Title><Dialog.Description>Odstraní se také všechny záznamy návštěv. Napište přesně <strong>{client.title}</strong>.</Dialog.Description></div><Dialog.Close className="icon-button" aria-label="Zavřít dialog"><X size={18} /></Dialog.Close></div><form className="form-stack" onSubmit={deleteClient}><label className="field-label">Jméno klienta<input className="text-input" value={deleteConfirmation} autoFocus autoComplete="off" spellCheck={false} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label><div className="dialog-actions"><Dialog.Close className="button button--quiet">Zrušit</Dialog.Close><button className="button button--danger" type="submit" disabled={deleteConfirmation !== client.title || deleting}>{deleting ? 'Mažu…' : 'Trvale smazat'}</button></div></form></Dialog.Content></Dialog.Portal></Dialog.Root>

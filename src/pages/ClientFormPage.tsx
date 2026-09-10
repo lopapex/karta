@@ -9,11 +9,12 @@ import { useToast } from '../app/toast'
 import { DynamicFields } from '../components/DynamicFields'
 import { CustomFieldComposer } from '../components/CustomFieldComposer'
 import { UiSelect } from '../components/UiSelect'
+import { useDiscardChanges } from '../components/DiscardChangesGuard'
 import { api, errorMessage } from '../domain/api'
 import type { CardField, TemplateRecord, TemplateSummary } from '../domain/types'
 
 interface ClientFormValues { title: string; templateId: string; values: Record<string, unknown> }
-const emptyValue = (field: CardField) => field.fieldType === 'checkbox' ? false : ''
+const emptyValue = (field: CardField) => field.fieldType === 'checkbox' ? false : field.fieldType === 'number' || field.fieldType === 'select' ? undefined : ''
 const structureOnly = (fields: CardField[]) => fields.map((field) => ({ ...field, isCustom: false, value: undefined }))
 
 export function ClientFormPage() {
@@ -30,6 +31,7 @@ export function ClientFormPage() {
   const [error, setError] = useState('')
   const { register, control, handleSubmit, reset, setValue, getValues, formState: { errors, isSubmitting, isDirty } } =
     useForm<ClientFormValues>({ defaultValues: { title: '', templateId: '', values: {} } })
+  const discard = useDiscardChanges(isDirty)
 
   useEffect(() => {
     void (async () => {
@@ -59,7 +61,7 @@ export function ClientFormPage() {
   }, [id, reset])
 
   async function applyTemplate(templateId: string, ask = true) {
-    if (ask && (isDirty || layoutFields.some((field) => field.value !== undefined && field.value !== '')) && !window.confirm('Změnit šablonu? Dosavadní rozložení a vyplněné hodnoty se nahradí.')) return
+    if (ask && isDirty) { discard.request(() => void applyTemplate(templateId, false)); return }
     setError('')
     try {
       const template = await api.getTemplate(templateId)
@@ -72,7 +74,11 @@ export function ClientFormPage() {
   }
 
   function fieldsWithValues(values = getValues('values')) {
-    return layoutFields.map((field) => ({ ...field, value: values[field.id] ?? emptyValue(field) }))
+    return layoutFields.map((field) => {
+      const value = values[field.id]
+      const emptyOptionalTypedValue = !field.required && (field.fieldType === 'number' || field.fieldType === 'select') && (value === '' || value === undefined || value === null)
+      return emptyOptionalTypedValue ? { ...field, value: undefined } : { ...field, value: value ?? emptyValue(field) }
+    })
   }
 
   async function save(values: ClientFormValues) {
@@ -117,7 +123,8 @@ export function ClientFormPage() {
   if (loading) return <p className="loading-state">Načítám kartu…</p>
   return (
     <section className="page page--form" aria-labelledby="client-form-title">
-      <Link className="back-link" to={id ? `/clients/${id}` : '/clients'}><ArrowLeft size={16} />{id ? 'Zpět na klienta' : 'Klienti'}</Link>
+      {discard.dialog}
+      <Link className="back-link" to={id ? `/clients/${id}` : '/clients'} onClick={(event) => { if (isDirty) { event.preventDefault(); discard.request(() => navigate(id ? `/clients/${id}` : '/clients')) } }}><ArrowLeft size={16} />{id ? 'Zpět na klienta' : 'Klienti'}</Link>
       <header className="page-header page-header--actions">
         <h1 id="client-form-title">{id ? 'Upravit klienta' : 'Nový klient'}</h1>
         <DropdownMenu.Root>
@@ -144,7 +151,7 @@ export function ClientFormPage() {
           setValue(`values.${field.id}`, emptyValue(field), { shouldDirty: true })
         }} />
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <div className="form-actions"><Link className="button button--quiet" to={id ? `/clients/${id}` : '/clients'}>Zrušit</Link><button className="button button--primary" disabled={isSubmitting} type="submit">{isSubmitting ? 'Ukládám…' : id ? 'Uložit' : 'Vytvořit'}</button></div>
+        <div className="form-actions"><Link className="button button--quiet" to={id ? `/clients/${id}` : '/clients'} onClick={(event) => { if (isDirty) { event.preventDefault(); discard.request(() => navigate(id ? `/clients/${id}` : '/clients')) } }}>Zrušit</Link><button className="button button--primary" disabled={isSubmitting} type="submit">{isSubmitting ? 'Ukládám…' : id ? 'Uložit' : 'Vytvořit'}</button></div>
       </form>
 
       <Dialog.Root open={newTemplateOpen} onOpenChange={setNewTemplateOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="dialog-content"><div className="dialog-heading"><div><Dialog.Title>Uložit novou šablonu</Dialog.Title><Dialog.Description>Uloží se pouze rozložení polí, nikoli údaje klienta.</Dialog.Description></div><Dialog.Close className="icon-button" aria-label="Zavřít"><X size={18} /></Dialog.Close></div><form className="form-stack" onSubmit={saveNewTemplate}><label className="field-label">Název šablony<input className="text-input" value={newTemplateName} autoFocus required maxLength={160} onChange={(event) => setNewTemplateName(event.target.value)} /></label><div className="dialog-actions"><Dialog.Close className="button button--quiet">Zrušit</Dialog.Close><button className="button button--primary" type="submit"><FloppyDisk size={17} />Uložit šablonu</button></div></form></Dialog.Content></Dialog.Portal></Dialog.Root>

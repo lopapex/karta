@@ -4,11 +4,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { useToast } from '../app/toast'
 import { api, errorMessage } from '../domain/api'
-import type { TemplateRecord, TemplateSummary } from '../domain/types'
+import type { TemplateSummary } from '../domain/types'
 
 export function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
-  const [templateDetails, setTemplateDetails] = useState<Record<string, TemplateRecord>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const { showToast } = useToast()
@@ -19,8 +18,6 @@ export function TemplatesPage() {
     try {
       const summaries = await api.listTemplates()
       setTemplates(summaries)
-      const details = await Promise.all(summaries.map((template) => api.getTemplate(template.id)))
-      setTemplateDetails(Object.fromEntries(details.map((template) => [template.id, template])))
     }
     catch (reason) { setError(errorMessage(reason)) }
     finally { setLoading(false) }
@@ -28,10 +25,8 @@ export function TemplatesPage() {
 
   useEffect(() => {
     api.listTemplates()
-      .then(async (summaries) => {
+      .then((summaries) => {
         setTemplates(summaries)
-        const details = await Promise.all(summaries.map((template) => api.getTemplate(template.id)))
-        setTemplateDetails(Object.fromEntries(details.map((template) => [template.id, template])))
       })
       .catch((reason) => setError(errorMessage(reason)))
       .finally(() => setLoading(false))
@@ -64,15 +59,26 @@ export function TemplatesPage() {
         </div>
       ) : null}
       <div className="record-list">
-        {templates.map((template) => (
-          <article className="record-row" key={template.id}>
-            <div className="record-copy"><h2>{template.name} {template.isDefault ? <span className="status-badge">Výchozí</span> : null}</h2><p>{templateDetails[template.id]?.fields.map((field) => field.label).join(', ') || 'Bez polí'}</p></div>
+        {templates.map((template) => {
+          const deleteDisabled = templates.length === 1 || template.isDefault
+          const deleteReason = templates.length === 1
+            ? 'Poslední šablonu nelze smazat'
+            : template.isDefault
+              ? 'Nejdřív nastavte jinou výchozí šablonu'
+              : undefined
+
+          return <article className="record-row" key={template.id}>
+            <div className="record-copy"><h2>{template.name} {template.isDefault ? <span className="status-badge">Výchozí</span> : null}</h2><p>{template.fieldLabels.join(', ') || 'Bez polí'}</p></div>
             <span className="template-count">{template.fieldCount} {template.fieldCount === 1 ? 'pole' : template.fieldCount >= 2 && template.fieldCount <= 4 ? 'pole' : 'polí'}</span>
             <div className="row-actions">
               {!template.isDefault ? <button className="button button--quiet" type="button" onClick={() => void makeDefault(template.id)}><Star size={16} />Nastavit jako výchozí</button> : null}
               <Link className="button button--quiet" to={`/templates/${template.id}/edit`}><NotePencil size={16} />Upravit</Link>
-              <AlertDialog.Root>
-                <span className="disabled-tooltip" title={templates.length === 1 ? 'Poslední šablonu nelze smazat' : undefined}><AlertDialog.Trigger asChild><button className="icon-button icon-button--danger" disabled={templates.length === 1} aria-label={`Smazat šablonu ${template.name}`}><Trash size={18} /></button></AlertDialog.Trigger></span>
+              {deleteDisabled ? (
+                <span className="disabled-tooltip" title={deleteReason}>
+                  <button className="icon-button icon-button--danger" type="button" disabled aria-label={`Smazat šablonu ${template.name}`}><Trash size={18} /></button>
+                </span>
+              ) : <AlertDialog.Root>
+                <AlertDialog.Trigger asChild><button className="icon-button icon-button--danger" type="button" aria-label={`Smazat šablonu ${template.name}`}><Trash size={18} /></button></AlertDialog.Trigger>
                 <AlertDialog.Portal>
                   <AlertDialog.Overlay className="dialog-overlay" />
                   <AlertDialog.Content className="dialog-content">
@@ -80,10 +86,10 @@ export function TemplatesPage() {
                     <div className="dialog-actions"><AlertDialog.Cancel className="button button--quiet">Zrušit</AlertDialog.Cancel><AlertDialog.Action className="button button--danger" onClick={() => void remove(template.id)}>Smazat šablonu</AlertDialog.Action></div>
                   </AlertDialog.Content>
                 </AlertDialog.Portal>
-              </AlertDialog.Root>
+              </AlertDialog.Root>}
             </div>
           </article>
-        ))}
+        })}
       </div>
     </section>
   )

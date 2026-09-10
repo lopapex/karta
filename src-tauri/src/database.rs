@@ -106,6 +106,12 @@ impl AppState {
         Ok(())
     }
 
+    pub fn current_key(&self) -> CommandResult<Zeroizing<Vec<u8>>> {
+        let guard = self.database.lock().map_err(|_| CommandError::storage())?;
+        let unlocked = guard.as_ref().ok_or_else(CommandError::locked)?;
+        Ok(Zeroizing::new(unlocked.key.to_vec()))
+    }
+
     pub fn checkpoint_and_copy(&self) -> CommandResult<(Zeroizing<Vec<u8>>, Vec<u8>)> {
         let guard = self.database.lock().map_err(|_| CommandError::storage())?;
         let unlocked = guard.as_ref().ok_or_else(CommandError::locked)?;
@@ -196,9 +202,11 @@ pub fn install_imported_files(
     key: &[u8],
     protected_key: &[u8],
 ) -> CommandResult<()> {
-    state.lock()?;
-    remove_if_exists(&state.paths.database.with_extension("db-wal"))?;
-    remove_if_exists(&state.paths.database.with_extension("db-shm"))?;
+    let previous_key = if state.is_unlocked() {
+        Some(state.current_key()?)
+    } else {
+        None
+    };
     remove_if_exists(&state.paths.pending_database)?;
     remove_if_exists(&state.paths.pending_key)?;
     remove_sqlite_sidecars(&state.paths.pending_database)?;
@@ -209,6 +217,12 @@ pub fn install_imported_files(
     test.query_row("SELECT COUNT(*) FROM schema_migrations", [], |_| Ok(()))
         .map_err(|_| CommandError::new("invalid_backup", "Záloha není platná databáze KARTA."))?;
     drop(test);
+    remove_sqlite_sidecars(&state.paths.pending_database)?;
+
+    // The live connection remains available until the imported database has
+    // been completely written and verified.
+    state.lock()?;
+    remove_sqlite_sidecars(&state.paths.database)?;
 
     let old_database = state.paths.directory.join("karta.db.replacing");
     let old_key = state.paths.directory.join("karta.key.replacing");
@@ -240,6 +254,9 @@ pub fn install_imported_files(
         }
         if had_key {
             let _ = fs::rename(&old_key, &state.paths.key);
+        }
+        if let Some(previous_key) = previous_key {
+            let _ = state.unlock(previous_key.to_vec());
         }
         return install_result;
     }
@@ -565,5 +582,28 @@ mod tests {
         let paths = DatabasePaths::new(directory.path().to_path_buf());
         std::fs::write(&paths.database, b"database").unwrap();
         assert_eq!(storage_shape(&paths), StorageShape::Inconsistent);
+    }
+
+    #[test]
+    fn invalid_import_keeps_existing_database_unlocked() {
+        with_large_stack(|| {
+            let _guard = DATABASE_TEST_LOCK.lock().unwrap();
+            let directory = tempdir().unwrap();
+            let state = AppState::new(directory.path().to_path_buf()).unwrap();
+            let key = [11_u8; 32];
+            initialize_files(&state.paths, &key, b"protected-key").unwrap();
+            state.unlock(key.to_vec()).unwrap();
+
+            let result = install_imported_files(&state, b"not a database", &key, b"replacement");
+            assert!(result.is_err());
+            assert!(state.is_unlocked());
+            state
+                .with_connection(|connection| {
+                    connection
+                        .query_row("SELECT COUNT(*) FROM templates", [], |_| Ok(()))
+                        .map_err(|_| CommandError::storage())
+                })
+                .unwrap();
+        });
     }
 }

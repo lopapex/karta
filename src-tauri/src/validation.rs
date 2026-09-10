@@ -128,3 +128,44 @@ pub fn validate_app_password(password: &str) -> CommandResult<()> {
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::FieldType;
+
+    fn field(field_type: FieldType, required: bool, value: Option<Value>) -> CardField {
+        CardField {
+            id: uuid::Uuid::new_v4().to_string(),
+            label: "Test".to_owned(),
+            field_type,
+            required,
+            options: Vec::new(),
+            is_custom: false,
+            value,
+        }
+    }
+
+    #[test]
+    fn optional_number_may_be_absent_but_not_an_empty_string() {
+        assert!(validate_fields(&[field(FieldType::Number, false, None)], true).is_ok());
+        assert!(validate_fields(
+            &[field(
+                FieldType::Number,
+                false,
+                Some(Value::String(String::new()))
+            )],
+            true
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn required_checkbox_accepts_explicit_false() {
+        assert!(validate_fields(
+            &[field(FieldType::Checkbox, true, Some(Value::Bool(false)))],
+            true
+        )
+        .is_ok());
+    }
+}

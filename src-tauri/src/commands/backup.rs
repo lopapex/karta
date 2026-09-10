@@ -179,14 +179,27 @@ fn decrypt_backup(
 
 fn write_backup_atomically(path: &Path, bytes: &[u8]) -> CommandResult<()> {
     let pending = path.with_extension("karta-backup.pending");
+    let previous = path.with_extension("karta-backup.previous");
+    let _ = fs::remove_file(&pending);
+    let _ = fs::remove_file(&previous);
     fs::write(&pending, bytes)
         .map_err(|_| CommandError::new("backup_write_failed", "Zálohu nelze uložit."))?;
+    fs::File::open(&pending)
+        .and_then(|file| file.sync_all())
+        .map_err(|_| CommandError::new("backup_write_failed", "Zálohu nelze dokončit."))?;
     if path.exists() {
-        fs::remove_file(path)
+        fs::rename(path, &previous)
             .map_err(|_| CommandError::new("backup_write_failed", "Zálohu nelze přepsat."))?;
     }
-    fs::rename(&pending, path)
-        .map_err(|_| CommandError::new("backup_write_failed", "Zálohu nelze dokončit."))
+    if fs::rename(&pending, path).is_err() {
+        let _ = fs::rename(&previous, path);
+        return Err(CommandError::new(
+            "backup_write_failed",
+            "Zálohu nelze dokončit.",
+        ));
+    }
+    let _ = fs::remove_file(previous);
+    Ok(())
 }
 
 #[cfg(test)]

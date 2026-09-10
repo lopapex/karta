@@ -81,6 +81,7 @@ pub struct TemplateSummary {
     pub name: String,
     pub description: String,
     pub field_count: usize,
+    pub field_labels: Vec<String>,
     pub updated_at: String,
     pub is_default: bool,
 }
