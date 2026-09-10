@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-visits"
+description = "Enables the list_visits command without any pre-configured scope."
+commands.allow = ["list_visits"]
+
+[[permission]]
+identifier = "deny-list-visits"
+description = "Denies the list_visits command without any pre-configured scope."
+commands.deny = ["list_visits"]

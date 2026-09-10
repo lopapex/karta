@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-visit"
+description = "Enables the create_visit command without any pre-configured scope."
+commands.allow = ["create_visit"]
+
+[[permission]]
+identifier = "deny-create-visit"
+description = "Denies the create_visit command without any pre-configured scope."
+commands.deny = ["create_visit"]

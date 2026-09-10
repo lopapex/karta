@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-visit"
+description = "Enables the delete_visit command without any pre-configured scope."
+commands.allow = ["delete_visit"]
+
+[[permission]]
+identifier = "deny-delete-visit"
+description = "Denies the delete_visit command without any pre-configured scope."
+commands.deny = ["delete_visit"]

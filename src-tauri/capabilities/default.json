@@ -1,0 +1,34 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Only the explicit KARTA application commands needed by the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "allow-get-security-status",
+    "allow-initialize-secure-storage",
+    "allow-unlock-database",
+    "allow-change-password",
+    "allow-list-clients",
+    "allow-get-client",
+    "allow-create-client",
+    "allow-update-client",
+    "allow-archive-client",
+    "allow-restore-client",
+    "allow-delete-client",
+    "allow-list-templates",
+    "allow-get-template",
+    "allow-create-template",
+    "allow-update-template",
+    "allow-delete-template",
+    "allow-set-default-template",
+    "allow-list-visits",
+    "allow-get-visit",
+    "allow-create-visit",
+    "allow-update-visit",
+    "allow-delete-visit",
+    "allow-export-database",
+    "allow-import-database"
+  ]
+}

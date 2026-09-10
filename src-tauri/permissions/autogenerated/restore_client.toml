@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-client"
+description = "Enables the restore_client command without any pre-configured scope."
+commands.allow = ["restore_client"]
+
+[[permission]]
+identifier = "deny-restore-client"
+description = "Denies the restore_client command without any pre-configured scope."
+commands.deny = ["restore_client"]

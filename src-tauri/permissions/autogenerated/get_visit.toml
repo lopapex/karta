@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-visit"
+description = "Enables the get_visit command without any pre-configured scope."
+commands.allow = ["get_visit"]
+
+[[permission]]
+identifier = "deny-get-visit"
+description = "Denies the get_visit command without any pre-configured scope."
+commands.deny = ["get_visit"]
